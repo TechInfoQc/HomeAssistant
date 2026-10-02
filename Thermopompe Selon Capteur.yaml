@@ -1,6 +1,6 @@
 blueprint:
   name: Thermopompe intelligente Heat Cool Auto
-  description: Contrôle une thermopompe à partir d'un capteur de température externe.
+  description: Contrôle une thermopompe selon un capteur externe sans jamais l'éteindre.
   domain: automation
 
   input:
@@ -19,7 +19,7 @@ blueprint:
 
     outside_sensor:
       name: Température extérieure (optionnelle)
-      default:
+      default: ""
       selector:
         entity:
           domain: sensor
@@ -55,6 +55,26 @@ blueprint:
           step: 0.5
           unit_of_measurement: "°C"
 
+    idle_heat_temperature:
+      name: Température de repos chauffage
+      default: 18
+      selector:
+        number:
+          min: 10
+          max: 25
+          step: 0.5
+          unit_of_measurement: "°C"
+
+    idle_cool_temperature:
+      name: Température de repos climatisation
+      default: 30
+      selector:
+        number:
+          min: 25
+          max: 35
+          step: 0.5
+          unit_of_measurement: "°C"
+
     hysteresis:
       name: Hystérésis
       default: 0.5
@@ -75,17 +95,6 @@ blueprint:
           step: 1
           unit_of_measurement: "°C"
 
-    fan_mode:
-      name: Vitesse ventilateur
-      default: auto
-      selector:
-        select:
-          options:
-            - auto
-            - low
-            - medium
-            - high
-
 trigger:
   - platform: state
     entity_id: !input inside_sensor
@@ -94,178 +103,203 @@ trigger:
     event: start
 
 variables:
-  climate_entity: !input climate_entity
   inside_sensor: !input inside_sensor
   outside_sensor: !input outside_sensor
-  mode: !input operation_mode
-  heat_sp: !input heat_setpoint
-  cool_sp: !input cool_setpoint
-  hyst: !input hysteresis
-  min_cool: !input min_outdoor_for_cooling
-  fan: !input fan_mode
 
   indoor: >
     {{ states(inside_sensor) | float(0) }}
 
   outdoor: >
-    {% if outside_sensor %}
+    {% if outside_sensor != '' %}
       {{ states(outside_sensor) | float(99) }}
     {% else %}
       99
     {% endif %}
 
+  mode: !input operation_mode
+  heat_sp: !input heat_setpoint
+  cool_sp: !input cool_setpoint
+  idle_heat: !input idle_heat_temperature
+  idle_cool: !input idle_cool_temperature
+  hyst: !input hysteresis
+  min_cool: !input min_outdoor_for_cooling
+
 action:
   - choose:
 
       #
-      # CHAUFFAGE
+      # MODE CHAUFFAGE
       #
 
       - conditions:
           - condition: template
-            value_template: >
-              {{ mode == 'heat' and indoor < (heat_sp - hyst) }}
+            value_template: "{{ mode == 'heat' }}"
         sequence:
-          - service: climate.set_hvac_mode
-            target:
-              entity_id: !input climate_entity
-            data:
-              hvac_mode: heat
 
-          - service: climate.set_temperature
-            target:
-              entity_id: !input climate_entity
-            data:
-              temperature: !input heat_setpoint
+          - choose:
 
-          - service: climate.set_fan_mode
-            target:
-              entity_id: !input climate_entity
-            data:
-              fan_mode: !input fan_mode
+              - conditions:
+                  - condition: template
+                    value_template: >
+                      {{ indoor < (heat_sp - hyst) }}
+                sequence:
+                  - service: climate.set_hvac_mode
+                    target:
+                      entity_id: !input climate_entity
+                    data:
+                      hvac_mode: heat
 
-      - conditions:
-          - condition: template
-            value_template: >
-              {{ mode == 'heat' and indoor > (heat_sp + hyst) }}
-        sequence:
-          - service: climate.turn_off
-            target:
-              entity_id: !input climate_entity
+                  - service: climate.set_temperature
+                    target:
+                      entity_id: !input climate_entity
+                    data:
+                      temperature: !input heat_setpoint
+
+            default:
+
+              - service: climate.set_hvac_mode
+                target:
+                  entity_id: !input climate_entity
+                data:
+                  hvac_mode: heat
+
+              - service: climate.set_temperature
+                target:
+                  entity_id: !input climate_entity
+                data:
+                  temperature: !input idle_heat_temperature
 
       #
-      # CLIMATISATION
-      #
-
-      - conditions:
-          - condition: template
-            value_template: >
-              {{
-                mode == 'cool'
-                and indoor > (cool_sp + hyst)
-                and outdoor > min_cool
-              }}
-        sequence:
-          - service: climate.set_hvac_mode
-            target:
-              entity_id: !input climate_entity
-            data:
-              hvac_mode: cool
-
-          - service: climate.set_temperature
-            target:
-              entity_id: !input climate_entity
-            data:
-              temperature: !input cool_setpoint
-
-          - service: climate.set_fan_mode
-            target:
-              entity_id: !input climate_entity
-            data:
-              fan_mode: !input fan_mode
-
-      - conditions:
-          - condition: template
-            value_template: >
-              {{ mode == 'cool' and indoor < (cool_sp - hyst) }}
-        sequence:
-          - service: climate.turn_off
-            target:
-              entity_id: !input climate_entity
-
-      #
-      # AUTO -> CHAUFFAGE
+      # MODE CLIMATISATION
       #
 
       - conditions:
           - condition: template
-            value_template: >
-              {{ mode == 'auto' and indoor < (heat_sp - hyst) }}
+            value_template: "{{ mode == 'cool' }}"
         sequence:
-          - service: climate.set_hvac_mode
-            target:
-              entity_id: !input climate_entity
-            data:
-              hvac_mode: heat
 
-          - service: climate.set_temperature
-            target:
-              entity_id: !input climate_entity
-            data:
-              temperature: !input heat_setpoint
+          - choose:
 
-          - service: climate.set_fan_mode
-            target:
-              entity_id: !input climate_entity
-            data:
-              fan_mode: !input fan_mode
+              - conditions:
+                  - condition: template
+                    value_template: >
+                      {{
+                        indoor > (cool_sp + hyst)
+                        and outdoor > min_cool
+                      }}
+                sequence:
+                  - service: climate.set_hvac_mode
+                    target:
+                      entity_id: !input climate_entity
+                    data:
+                      hvac_mode: cool
+
+                  - service: climate.set_temperature
+                    target:
+                      entity_id: !input climate_entity
+                    data:
+                      temperature: !input cool_setpoint
+
+            default:
+
+              - service: climate.set_hvac_mode
+                target:
+                  entity_id: !input climate_entity
+                data:
+                  hvac_mode: cool
+
+              - service: climate.set_temperature
+                target:
+                  entity_id: !input climate_entity
+                data:
+                  temperature: !input idle_cool_temperature
 
       #
-      # AUTO -> CLIMATISATION
+      # MODE AUTO
       #
 
       - conditions:
           - condition: template
-            value_template: >
-              {{
-                mode == 'auto'
-                and indoor > (cool_sp + hyst)
-                and outdoor > min_cool
-              }}
+            value_template: "{{ mode == 'auto' }}"
         sequence:
-          - service: climate.set_hvac_mode
-            target:
-              entity_id: !input climate_entity
-            data:
-              hvac_mode: cool
 
-          - service: climate.set_temperature
-            target:
-              entity_id: !input climate_entity
-            data:
-              temperature: !input cool_setpoint
+          - choose:
 
-          - service: climate.set_fan_mode
-            target:
-              entity_id: !input climate_entity
-            data:
-              fan_mode: !input fan_mode
+              # Chauffage requis
+              - conditions:
+                  - condition: template
+                    value_template: >
+                      {{ indoor < (heat_sp - hyst) }}
+                sequence:
 
-      #
-      # ZONE DE CONFORT
-      #
+                  - service: climate.set_hvac_mode
+                    target:
+                      entity_id: !input climate_entity
+                    data:
+                      hvac_mode: heat
 
-      - conditions:
-          - condition: template
-            value_template: >
-              {{
-                mode == 'auto'
-                and indoor >= (heat_sp - hyst)
-                and indoor <= (cool_sp + hyst)
-              }}
-        sequence:
-          - service: climate.turn_off
-            target:
-              entity_id: !input climate_entity
+                  - service: climate.set_temperature
+                    target:
+                      entity_id: !input climate_entity
+                    data:
+                      temperature: !input heat_setpoint
+
+              # Climatisation requise
+              - conditions:
+                  - condition: template
+                    value_template: >
+                      {{
+                        indoor > (cool_sp + hyst)
+                        and outdoor > min_cool
+                      }}
+                sequence:
+
+                  - service: climate.set_hvac_mode
+                    target:
+                      entity_id: !input climate_entity
+                    data:
+                      hvac_mode: cool
+
+                  - service: climate.set_temperature
+                    target:
+                      entity_id: !input climate_entity
+                    data:
+                      temperature: !input cool_setpoint
+
+            default:
+
+              - choose:
+
+                  - conditions:
+                      - condition: template
+                        value_template: >
+                          {{ indoor < ((heat_sp + cool_sp) / 2) }}
+                    sequence:
+
+                      - service: climate.set_hvac_mode
+                        target:
+                          entity_id: !input climate_entity
+                        data:
+                          hvac_mode: heat
+
+                      - service: climate.set_temperature
+                        target:
+                          entity_id: !input climate_entity
+                        data:
+                          temperature: !input idle_heat_temperature
+
+                default:
+
+                  - service: climate.set_hvac_mode
+                    target:
+                      entity_id: !input climate_entity
+                    data:
+                      hvac_mode: cool
+
+                  - service: climate.set_temperature
+                    target:
+                      entity_id: !input climate_entity
+                    data:
+                      temperature: !input idle_cool_temperature
 
 mode: restart
