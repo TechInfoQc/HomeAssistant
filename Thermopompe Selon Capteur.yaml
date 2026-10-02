@@ -1,9 +1,6 @@
 blueprint:
-  name: Thermopompe intelligente (Heat/Cool/Auto)
-  description: >
-    Contrôle une thermopompe avec un capteur de température externe.
-    Supporte chauffage, climatisation et mode automatique.
-
+  name: Thermopompe intelligente Heat Cool Auto
+  description: Contrôle une thermopompe à partir d'un capteur de température externe.
   domain: automation
 
   input:
@@ -22,14 +19,14 @@ blueprint:
 
     outside_sensor:
       name: Température extérieure (optionnelle)
-      default: ""
+      default:
       selector:
         entity:
           domain: sensor
           device_class: temperature
 
     operation_mode:
-      name: Mode de fonctionnement
+      name: Mode
       default: auto
       selector:
         select:
@@ -46,7 +43,7 @@ blueprint:
           min: 15
           max: 30
           step: 0.5
-          unit_of_measurement: °C
+          unit_of_measurement: "°C"
 
     cool_setpoint:
       name: Consigne climatisation
@@ -56,7 +53,7 @@ blueprint:
           min: 18
           max: 35
           step: 0.5
-          unit_of_measurement: °C
+          unit_of_measurement: "°C"
 
     hysteresis:
       name: Hystérésis
@@ -66,7 +63,7 @@ blueprint:
           min: 0.1
           max: 3
           step: 0.1
-          unit_of_measurement: °C
+          unit_of_measurement: "°C"
 
     min_outdoor_for_cooling:
       name: Température extérieure minimale pour climatisation
@@ -76,7 +73,7 @@ blueprint:
           min: 0
           max: 25
           step: 1
-          unit_of_measurement: °C
+          unit_of_measurement: "°C"
 
     fan_mode:
       name: Vitesse ventilateur
@@ -89,45 +86,45 @@ blueprint:
             - medium
             - high
 
-    notify_device:
-      name: Service notification (optionnel)
-      default: ""
-      selector:
-        text:
-
 trigger:
   - platform: state
     entity_id: !input inside_sensor
 
+  - platform: homeassistant
+    event: start
+
 variables:
-  indoor: "{{ states(!input inside_sensor) | float(0) }}"
-  outdoor_sensor: !input outside_sensor
-  outdoor: >
-    {% if outdoor_sensor != '' %}
-      {{ states(outdoor_sensor) | float(99) }}
-    {% else %}
-      99
-    {% endif %}
+  climate_entity: !input climate_entity
+  inside_sensor: !input inside_sensor
+  outside_sensor: !input outside_sensor
   mode: !input operation_mode
   heat_sp: !input heat_setpoint
   cool_sp: !input cool_setpoint
   hyst: !input hysteresis
   min_cool: !input min_outdoor_for_cooling
+  fan: !input fan_mode
+
+  indoor: >
+    {{ states(inside_sensor) | float(0) }}
+
+  outdoor: >
+    {% if outside_sensor %}
+      {{ states(outside_sensor) | float(99) }}
+    {% else %}
+      99
+    {% endif %}
 
 action:
   - choose:
 
-      ##################################################################
+      #
       # CHAUFFAGE
-      ##################################################################
+      #
 
       - conditions:
           - condition: template
             value_template: >
-              {{
-                mode == 'heat'
-                and indoor < (heat_sp - hyst)
-              }}
+              {{ mode == 'heat' and indoor < (heat_sp - hyst) }}
         sequence:
           - service: climate.set_hvac_mode
             target:
@@ -139,7 +136,7 @@ action:
             target:
               entity_id: !input climate_entity
             data:
-              temperature: "{{ heat_sp }}"
+              temperature: !input heat_setpoint
 
           - service: climate.set_fan_mode
             target:
@@ -150,18 +147,15 @@ action:
       - conditions:
           - condition: template
             value_template: >
-              {{
-                mode == 'heat'
-                and indoor > (heat_sp + hyst)
-              }}
+              {{ mode == 'heat' and indoor > (heat_sp + hyst) }}
         sequence:
           - service: climate.turn_off
             target:
               entity_id: !input climate_entity
 
-      ##################################################################
+      #
       # CLIMATISATION
-      ##################################################################
+      #
 
       - conditions:
           - condition: template
@@ -182,7 +176,7 @@ action:
             target:
               entity_id: !input climate_entity
             data:
-              temperature: "{{ cool_sp }}"
+              temperature: !input cool_setpoint
 
           - service: climate.set_fan_mode
             target:
@@ -193,26 +187,20 @@ action:
       - conditions:
           - condition: template
             value_template: >
-              {{
-                mode == 'cool'
-                and indoor < (cool_sp - hyst)
-              }}
+              {{ mode == 'cool' and indoor < (cool_sp - hyst) }}
         sequence:
           - service: climate.turn_off
             target:
               entity_id: !input climate_entity
 
-      ##################################################################
-      # AUTO CHAUFFAGE
-      ##################################################################
+      #
+      # AUTO -> CHAUFFAGE
+      #
 
       - conditions:
           - condition: template
             value_template: >
-              {{
-                mode == 'auto'
-                and indoor < (heat_sp - hyst)
-              }}
+              {{ mode == 'auto' and indoor < (heat_sp - hyst) }}
         sequence:
           - service: climate.set_hvac_mode
             target:
@@ -224,21 +212,17 @@ action:
             target:
               entity_id: !input climate_entity
             data:
-              temperature: "{{ heat_sp }}"
+              temperature: !input heat_setpoint
 
-          - if:
-              - condition: template
-                value_template: "{{ !input notify_device != '' }}"
-            then:
-              - service: "{{ !input notify_device }}"
-                data:
-                  message: >
-                    Thermopompe en chauffage.
-                    Température intérieure: {{ indoor }}°C
+          - service: climate.set_fan_mode
+            target:
+              entity_id: !input climate_entity
+            data:
+              fan_mode: !input fan_mode
 
-      ##################################################################
-      # AUTO CLIMATISATION
-      ##################################################################
+      #
+      # AUTO -> CLIMATISATION
+      #
 
       - conditions:
           - condition: template
@@ -259,27 +243,24 @@ action:
             target:
               entity_id: !input climate_entity
             data:
-              temperature: "{{ cool_sp }}"
+              temperature: !input cool_setpoint
 
-          - if:
-              - condition: template
-                value_template: "{{ !input notify_device != '' }}"
-            then:
-              - service: "{{ !input notify_device }}"
-                data:
-                  message: >
-                    Thermopompe en climatisation.
-                    Température intérieure: {{ indoor }}°C
+          - service: climate.set_fan_mode
+            target:
+              entity_id: !input climate_entity
+            data:
+              fan_mode: !input fan_mode
 
-      ##################################################################
-      # ZONE CONFORT
-      ##################################################################
+      #
+      # ZONE DE CONFORT
+      #
 
       - conditions:
           - condition: template
             value_template: >
               {{
-                indoor >= (heat_sp - hyst)
+                mode == 'auto'
+                and indoor >= (heat_sp - hyst)
                 and indoor <= (cool_sp + hyst)
               }}
         sequence:
