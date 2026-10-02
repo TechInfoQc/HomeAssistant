@@ -100,4 +100,191 @@ trigger:
     entity_id: !input inside_sensor
 
 variables:
-  indoor: "{{ 
+  indoor: "{{ states(!input inside_sensor) | float(0) }}"
+  outdoor_sensor: !input outside_sensor
+  outdoor: >
+    {% if outdoor_sensor != '' %}
+      {{ states(outdoor_sensor) | float(99) }}
+    {% else %}
+      99
+    {% endif %}
+  mode: !input operation_mode
+  heat_sp: !input heat_setpoint
+  cool_sp: !input cool_setpoint
+  hyst: !input hysteresis
+  min_cool: !input min_outdoor_for_cooling
+
+action:
+  - choose:
+
+      ##################################################################
+      # CHAUFFAGE
+      ##################################################################
+
+      - conditions:
+          - condition: template
+            value_template: >
+              {{
+                mode == 'heat'
+                and indoor < (heat_sp - hyst)
+              }}
+        sequence:
+          - service: climate.set_hvac_mode
+            target:
+              entity_id: !input climate_entity
+            data:
+              hvac_mode: heat
+
+          - service: climate.set_temperature
+            target:
+              entity_id: !input climate_entity
+            data:
+              temperature: "{{ heat_sp }}"
+
+          - service: climate.set_fan_mode
+            target:
+              entity_id: !input climate_entity
+            data:
+              fan_mode: !input fan_mode
+
+      - conditions:
+          - condition: template
+            value_template: >
+              {{
+                mode == 'heat'
+                and indoor > (heat_sp + hyst)
+              }}
+        sequence:
+          - service: climate.turn_off
+            target:
+              entity_id: !input climate_entity
+
+      ##################################################################
+      # CLIMATISATION
+      ##################################################################
+
+      - conditions:
+          - condition: template
+            value_template: >
+              {{
+                mode == 'cool'
+                and indoor > (cool_sp + hyst)
+                and outdoor > min_cool
+              }}
+        sequence:
+          - service: climate.set_hvac_mode
+            target:
+              entity_id: !input climate_entity
+            data:
+              hvac_mode: cool
+
+          - service: climate.set_temperature
+            target:
+              entity_id: !input climate_entity
+            data:
+              temperature: "{{ cool_sp }}"
+
+          - service: climate.set_fan_mode
+            target:
+              entity_id: !input climate_entity
+            data:
+              fan_mode: !input fan_mode
+
+      - conditions:
+          - condition: template
+            value_template: >
+              {{
+                mode == 'cool'
+                and indoor < (cool_sp - hyst)
+              }}
+        sequence:
+          - service: climate.turn_off
+            target:
+              entity_id: !input climate_entity
+
+      ##################################################################
+      # AUTO CHAUFFAGE
+      ##################################################################
+
+      - conditions:
+          - condition: template
+            value_template: >
+              {{
+                mode == 'auto'
+                and indoor < (heat_sp - hyst)
+              }}
+        sequence:
+          - service: climate.set_hvac_mode
+            target:
+              entity_id: !input climate_entity
+            data:
+              hvac_mode: heat
+
+          - service: climate.set_temperature
+            target:
+              entity_id: !input climate_entity
+            data:
+              temperature: "{{ heat_sp }}"
+
+          - if:
+              - condition: template
+                value_template: "{{ !input notify_device != '' }}"
+            then:
+              - service: "{{ !input notify_device }}"
+                data:
+                  message: >
+                    Thermopompe en chauffage.
+                    Température intérieure: {{ indoor }}°C
+
+      ##################################################################
+      # AUTO CLIMATISATION
+      ##################################################################
+
+      - conditions:
+          - condition: template
+            value_template: >
+              {{
+                mode == 'auto'
+                and indoor > (cool_sp + hyst)
+                and outdoor > min_cool
+              }}
+        sequence:
+          - service: climate.set_hvac_mode
+            target:
+              entity_id: !input climate_entity
+            data:
+              hvac_mode: cool
+
+          - service: climate.set_temperature
+            target:
+              entity_id: !input climate_entity
+            data:
+              temperature: "{{ cool_sp }}"
+
+          - if:
+              - condition: template
+                value_template: "{{ !input notify_device != '' }}"
+            then:
+              - service: "{{ !input notify_device }}"
+                data:
+                  message: >
+                    Thermopompe en climatisation.
+                    Température intérieure: {{ indoor }}°C
+
+      ##################################################################
+      # ZONE CONFORT
+      ##################################################################
+
+      - conditions:
+          - condition: template
+            value_template: >
+              {{
+                indoor >= (heat_sp - hyst)
+                and indoor <= (cool_sp + hyst)
+              }}
+        sequence:
+          - service: climate.turn_off
+            target:
+              entity_id: !input climate_entity
+
+mode: restart
