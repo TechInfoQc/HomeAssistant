@@ -154,6 +154,8 @@ variables:
   thermostat_valid: >
     {{ state_attr(thermostat_entity, 'current_temperature') is not none }}
 
+  force_cool_delta: !input force_cool_delta
+
 
   start_time: !input start_time
   end_time: !input end_time
@@ -259,7 +261,7 @@ action:
                         data:
                           temperature: >
                             {% if thermostat_valid and (thermostat_temp <= cool_sp) %}
-                              {{ (thermostat_temp - (!input force_cool_delta)) | round(1) }}
+                              {{ (thermostat_temp - force_cool_delta) | round(1) }}
                             {% else %}
                               {{ cool_sp }}
                             {% endif %}
