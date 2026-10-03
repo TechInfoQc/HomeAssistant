@@ -146,11 +146,13 @@ variables:
   idle_cool: !input idle_cool_temperature
   hyst: !input hysteresis
 
+  thermostat_entity: !input climate_entity
+
   thermostat_temp: >
-    {{ state_attr(!input climate_entity, 'current_temperature') | float(-999) }}
+    {{ state_attr(thermostat_entity, 'current_temperature') | float(-999) }}
 
   thermostat_valid: >
-    {{ state_attr(!input climate_entity, 'current_temperature') is not none }}
+    {{ state_attr(thermostat_entity, 'current_temperature') is not none }}
 
 
   start_time: !input start_time
