@@ -1,9 +1,8 @@
 blueprint:
-  name: Toile intelligente - Fermeture au coucher du soleil
+  name: Toile intelligente - Lever et coucher du soleil
   description: >
-    Ferme une toile après le coucher du soleil.
-    Si la fenêtre est ouverte, la toile se positionne à une ouverture configurable.
-    Sinon, elle se ferme complètement.
+    Ouvre la toile au lever du soleil et la ferme au coucher du soleil.
+    Si la fenêtre est ouverte lors de la fermeture, la toile se place à une position configurable.
 
   domain: automation
 
@@ -20,24 +19,33 @@ blueprint:
         entity:
           domain: binary_sensor
 
+    sunrise_offset:
+      name: Décalage du lever du soleil
+      description: |
+        Exemples :
+        00:30:00 = 30 minutes après
+        -00:15:00 = 15 minutes avant
+      default: "00:00:00"
+      selector:
+        text:
+
     sunset_offset:
       name: Décalage du coucher du soleil
       description: |
         Exemples :
         01:00:00 = 1 heure après
-        00:30:00 = 30 minutes après
-        -00:15:00 = 15 minutes avant
+        -00:30:00 = 30 minutes avant
       default: "01:00:00"
       selector:
         text:
 
     partial_position:
-      name: Position si fenêtre ouverte
+      name: Position si la fenêtre est ouverte
       description: |
         0 = fermé complètement
         100 = ouvert complètement
 
-        Exemple :
+        Exemple:
         25 = fermeture à 75 %
       default: 25
       selector:
@@ -49,25 +57,47 @@ blueprint:
 
 trigger:
   - platform: sun
+    event: sunrise
+    offset: !input sunrise_offset
+    id: sunrise
+
+  - platform: sun
     event: sunset
     offset: !input sunset_offset
+    id: sunset
 
 condition: []
 
 action:
-  - if:
-      - condition: state
-        entity_id: !input window_sensor
-        state: "on"
-    then:
-      - service: cover.set_cover_position
-        target:
-          entity_id: !input cover_entity
-        data:
-          position: !input partial_position
-    else:
-      - service: cover.close_cover
-        target:
-          entity_id: !input cover_entity
+  - choose:
+
+      # Ouverture le matin
+      - conditions:
+          - condition: trigger
+            id: sunrise
+        sequence:
+          - service: cover.open_cover
+            target:
+              entity_id: !input cover_entity
+
+      # Fermeture le soir
+      - conditions:
+          - condition: trigger
+            id: sunset
+        sequence:
+          - if:
+              - condition: state
+                entity_id: !input window_sensor
+                state: "on"
+            then:
+              - service: cover.set_cover_position
+                target:
+                  entity_id: !input cover_entity
+                data:
+                  position: !input partial_position
+            else:
+              - service: cover.close_cover
+                target:
+                  entity_id: !input cover_entity
 
 mode: single
