@@ -34,9 +34,20 @@ blueprint:
       selector:
         time:
 
+    sunset_offset:
+      name: Décalage après coucher du soleil
+      default: "01:00:00"
+      selector:
+        text:
+
 trigger:
   - platform: time
     at: !input trigger_time
+
+trigger:
+  - platform: sun
+    event: sunset
+    offset: !input sunset_offset
 
 action:
   - if:
