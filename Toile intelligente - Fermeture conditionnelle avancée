@@ -1,0 +1,150 @@
+blueprint:
+  name: Toile intelligente - Fermeture conditionnelle avancée
+  description: >
+    Ferme une toile selon un horaire configurable.
+
+    Fonctionnalités :
+    - heure fixe OU coucher du soleil avec décalage
+    - fermeture complète ou partielle si fenêtre ouverte
+    - possibilité d'ignorer la fermeture si la fenêtre est ouverte
+    - délai avant action
+    - notifications facultatives
+
+  domain: automation
+
+  input:
+
+    cover_entity:
+      name: Toile
+      selector:
+        entity:
+          domain: cover
+
+    window_sensor:
+      name: Fenêtre associée
+      selector:
+        entity:
+          domain: binary_sensor
+
+    trigger_mode:
+      name: Mode de déclenchement
+      default: sunset
+      selector:
+        select:
+          options:
+            - sunset
+            - time
+
+    sunset_offset:
+      name: Décalage après coucher du soleil
+      default: "01:00:00"
+      selector:
+        text:
+
+    close_time:
+      name: Heure fixe
+      default: "22:00:00"
+      selector:
+        time:
+
+    window_behavior:
+      name: Comportement si fenêtre ouverte
+      default: partial
+      selector:
+        select:
+          options:
+            - partial
+            - skip
+            - full
+
+    partial_position:
+      name: Position si fermeture partielle
+      description: |
+        0 = fermé
+        100 = ouvert
+        25 = fermeture à 75 %
+      default: 25
+      selector:
+        number:
+          min: 0
+          max: 100
+          step: 1
+          mode: slider
+
+    delay_before_action:
+      name: Délai avant fermeture (secondes)
+      default: 0
+      selector:
+        number:
+          min: 0
+          max: 3600
+          step: 1
+
+trigger:
+
+  - platform: sun
+    event: sunset
+    offset: !input sunset_offset
+    id: sunset
+
+  - platform: time
+    at: !input close_time
+    id: time
+
+condition:
+  - condition: template
+    value_template: >
+      {% set mode = !input trigger_mode %}
+      {{ trigger.id == mode }}
+
+action:
+
+  - delay:
+      seconds: !input delay_before_action
+
+  - choose:
+
+      #
+      # Fenêtre ouverte
+      #
+      - conditions:
+          - condition: state
+            entity_id: !input window_sensor
+            state: "on"
+
+        sequence:
+
+          - choose:
+
+              - conditions:
+                  - condition: template
+                    value_template: >
+                      {{ !input window_behavior == 'skip' }}
+                sequence: []
+
+              - conditions:
+                  - condition: template
+                    value_template: >
+                      {{ !input window_behavior == 'full' }}
+                sequence:
+                  - service: cover.close_cover
+                    target:
+                      entity_id: !input cover_entity
+
+            default:
+              - service: cover.set_cover_position
+                target:
+                  entity_id: !input cover_entity
+                data:
+                  position: !input partial_position
+
+    #
+    # Fenêtre fermée
+    #
+    default:
+
+      - service: cover.close_cover
+        target:
+          entity_id: !input cover_entity
+
+mode: single
