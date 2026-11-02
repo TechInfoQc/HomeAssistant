@@ -1,5 +1,5 @@
 blueprint:
-  name: Toile intelligente - Lever et coucher du soleil
+  name: Toile intelligente - Lever et coucher du soleil v3
   description: >
     Ouvre la toile au lever du soleil et la ferme au coucher du soleil.
     Si la fenêtre est ouverte lors de la fermeture, la toile se place à une position configurable.
