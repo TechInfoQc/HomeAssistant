@@ -1,18 +1,9 @@
 blueprint:
-  name: Toile intelligente - Fermeture conditionnelle avancée
-  description: >
-    Ferme une toile selon un horaire configurable.
-
-    Fonctionnalités :
-      - Heure fixe OU coucher du soleil avec décalage
-      - Fermeture complète ou partielle si la fenêtre est ouverte
-      - Possibilité de ne rien faire si la fenêtre est ouverte
-      - Délai avant fermeture
-
+  name: Toile intelligente
+  description: Ferme une toile complètement ou partiellement si une fenêtre est ouverte.
   domain: automation
 
   input:
-
     cover_entity:
       name: Toile
       selector:
@@ -20,49 +11,47 @@ blueprint:
           domain: cover
 
     window_sensor:
-      name: Fenêtre associée
+      name: Fenêtre
       selector:
         entity:
           domain: binary_sensor
 
-    trigger_mode:
-      name: Mode de déclenchement
-      description: Choisir entre coucher du soleil ou heure fixe
-      default: sunset
+    partial_position:
+      name: Position si fenêtre ouverte
+      description: |
+        0 = fermé
+        100 = ouvert
+        Exemple : 25 = fermé à 75 %
+      default: 25
       selector:
-        select:
-          options:
-            - sunset
-            - time
+        number:
+          min: 0
+          max: 100
+          step: 1
 
-    sunset_offset:
-      name: Décalage après le coucher du soleil
-      description: Exemple 01:00:00 = 1 heure après le coucher du soleil
-      default: "01:00:00"
-      selector:
-        text:
-
-    close_time:
-      name: Heure fixe
-      default: "22:00:00"
+    trigger_time:
+      name: Heure de fermeture
       selector:
         time:
 
-    window_behavior:
-      name: Comportement si la fenêtre est ouverte
-      description: >
-        partial = fermeture partielle
-        full = fermeture complète
-        skip = aucune action
-      default: partial
-      selector:
-        select:
-          options:
-            - partial
-            - full
-            - skip
+trigger:
+  - platform: time
+    at: !input trigger_time
 
-    partial_position:
-      name: Position si fermeture partielle
-      description: >
-   
+action:
+  - if:
+      - condition: state
+        entity_id: !input window_sensor
+        state: "on"
+    then:
+      - service: cover.set_cover_position
+        target:
+          entity_id: !input cover_entity
+        data:
+          position: !input partial_position
+    else:
+      - service: cover.close_cover
+        target:
+          entity_id: !input cover_entity
+
+mode: single
