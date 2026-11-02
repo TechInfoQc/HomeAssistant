@@ -1,6 +1,10 @@
 blueprint:
-  name: Toile intelligente
-  description: Ferme une toile complètement ou partiellement si une fenêtre est ouverte.
+  name: Toile intelligente - Fermeture au coucher du soleil
+  description: >
+    Ferme une toile après le coucher du soleil.
+    Si la fenêtre est ouverte, la toile se positionne à une ouverture configurable.
+    Sinon, elle se ferme complètement.
+
   domain: automation
 
   input:
@@ -11,43 +15,44 @@ blueprint:
           domain: cover
 
     window_sensor:
-      name: Fenêtre
+      name: Fenêtre associée
       selector:
         entity:
           domain: binary_sensor
 
+    sunset_offset:
+      name: Décalage du coucher du soleil
+      description: |
+        Exemples :
+        01:00:00 = 1 heure après
+        00:30:00 = 30 minutes après
+        -00:15:00 = 15 minutes avant
+      default: "01:00:00"
+      selector:
+        text:
+
     partial_position:
       name: Position si fenêtre ouverte
       description: |
-        0 = fermé
-        100 = ouvert
-        Exemple : 25 = fermé à 75 %
+        0 = fermé complètement
+        100 = ouvert complètement
+
+        Exemple :
+        25 = fermeture à 75 %
       default: 25
       selector:
         number:
           min: 0
           max: 100
           step: 1
-
-    trigger_time:
-      name: Heure de fermeture
-      selector:
-        time:
-
-    sunset_offset:
-      name: Décalage après coucher du soleil
-      default: "01:00:00"
-      selector:
-        text:
-
-trigger:
-  - platform: time
-    at: !input trigger_time
+          mode: slider
 
 trigger:
   - platform: sun
     event: sunset
     offset: !input sunset_offset
+
+condition: []
 
 action:
   - if:
